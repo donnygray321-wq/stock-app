@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Stock Analyzer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0c10;
+      --surface: #11141b;
+      --surface2: #181d27;
+      --border: #1e2433;
+      --accent: #00d4aa;
+      --accent2: #3b82f6;
+      --gold: #f59e0b;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --green: #22c55e;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+    .app { display: flex; flex-direction: column; min-height: 100vh; max-width: 1200px; margin: 0 auto; padding: 0 12px 80px; }
+
+    .nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); display: flex; z-index: 100; }
+    .nav-btn { flex: 1; padding: 10px 4px 12px; background: none; border: none; color: var(--muted); cursor: pointer; font-family: var(--sans); font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: color .2s; }
+    .nav-btn svg { width: 18px; height: 18px; }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn.active svg { filter: drop-shadow(0 0 6px var(--accent)); }
+
+    .header { padding: 20px 0 12px; display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 22px; font-weight: 800; color: var(--accent); letter-spacing: -.02em; }
+    .header span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .card-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+
+    .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 14px; outline: none; transition: border-color .2s; }
+    .input:focus { border-color: var(--accent); }
+    .input::placeholder { color: var(--muted); }
+
+    .btn { background: var(--accent); color: #000; border: none; border-radius: 8px; padding: 10px 18px; font-family: var(--sans); font-weight: 700; font-size: 13px; cursor: pointer; transition: opacity .2s, transform .1s; white-space: nowrap; }
+    .btn:hover { opacity: .85; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-sm { padding: 6px 12px; font-size: 11px; border-radius: 6px; }
+    .btn-red { background: var(--red); color: #fff; }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .dot.gray { background: var(--muted); }
+
+    .score-badge { font-family: var(--mono); font-weight: 600; font-size: 20px; }
+    .score-badge.high { color: var(--green); }
+    .score-badge.mid { color: var(--yellow); }
+    .score-badge.low { color: var(--red); }
+
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .metric-row { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: 6px; padding: 7px 10px; }
+    .metric-label { font-size: 11px; color: var(--muted); flex: 1; font-family: var(--mono); }
+    .metric-value { font-family: var(--mono); font-size: 11px; color: var(--text); }
+
+    .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); }
+    th { text-align: left; padding: 8px 10px; color: var(--muted); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+
+    .ticker-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .ticker-card .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .ticker-card .sym { font-size: 18px; font-weight: 800; color: var(--accent); }
+    .ticker-card .price { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+    .ticker-card .chg { font-family: var(--mono); font-size: 12px; }
+    .chg.pos { color: var(--green); }
+    .chg.neg { color: var(--red); }
+
+    .dots-row { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); cursor: pointer; font-size: 11px; font-weight: 600; transition: all .2s; margin: 3px; }
+    .pill.active { background: var(--accent); color: #000; border-color: var(--accent); }
+    .pill .count { font-family: var(--mono); font-size: 10px; opacity: .7; }
+
+    .rank-gold { color: #f59e0b; }
+    .rank-silver { color: #94a3b8; }
+    .rank-bronze { color: #b45309; }
+
+    .error { color: var(--red); font-size: 12px; font-family: var(--mono); padding: 8px 0; }
+    .info { color: var(--muted); font-size: 12px; font-family: var(--mono); text-align: center; padding: 24px 0; }
+
+    .pnl-pos { color: var(--green); }
+    .pnl-neg { color: var(--red); }
+
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    .signal-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; width: 80px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 6px; }
+    .signal-bar-fill { height: 100%; border-radius: 3px; }
+
+    .freq-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .freq-label { font-size: 11px; font-family: var(--mono); width: 120px; flex-shrink: 0; color: var(--muted); }
+    .freq-track { flex: 1; height: 16px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    .freq-fill { height: 100%; background: var(--accent2); border-radius: 4px; display: flex; align-items: center; padding-left: 6px; font-size: 10px; font-family: var(--mono); color: #fff; transition: width .6s; }
+
+    textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 12px; outline: none; resize: vertical; min-height: 80px; }
+    textarea:focus { border-color: var(--accent); }
+
+    select { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; }
+    select:focus { border-color: var(--accent); }
+
+    .loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-family: var(--mono); }
+    .spin { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-box { background: var(--surface2); border-radius: 8px; padding: 12px; text-align: center; }
+    .stat-box .val { font-family: var(--mono); font-size: 20px; font-weight: 600; }
+    .stat-box .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
+
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-family: var(--mono); font-weight: 600; }
+    .tag.green { background: rgba(34,197,94,.15); color: var(--green); }
+    .tag.red { background: rgba(239,68,68,.15); color: var(--red); }
+    .tag.yellow { background: rgba(234,179,8,.15); color: var(--yellow); }
+
+    .winner-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .winner-card .wc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+
+    .insight-box { background: var(--surface2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 12px; margin-bottom: 8px; font-size: 12px; line-height: 1.6; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="content"></div>
+  </div>
+  <nav class="nav" id="nav"></nav>
+
+  <script>
+  // ── CONSTANTS ────────────────────────────────────────────────────────────────
+  const METRIC_NAMES = [
+    "RSI < 35", "MACD Cross", "Price > 50MA", "Price > 200MA",
+    "Golden Cross", "Vol > 20avg", "Price < VWAP", "BB Bottom 20%",
+    "Near 52wk Low", "Support Hold", "RS vs SPY"
+  ];
+
+  const METRIC_KEYS = [
+    "rsi","macd","ma50","ma200","golden","vol","vwap","bb","wk52","support","rs"
+  ];
+
+  const SECTORS = {
+    // ── Broad Indices ────────────────────────────────────────────────────────
+    "S&P 500": [
+      "A","AAL","AAP","AAPL","ABBV","ABT","ACGL","ACN","ADBE","ADI","ADM","ADP","ADSK",
+      "AEE","AEP","AES","AFL","AIG","AIZ","AJG","AKAM","ALB","ALGN","ALK","ALL","ALLE",
+      "AMAT","AMCR","AMD","AME","AMGN","AMP","AMT","AMZN","ANET","ANSS","AON","AOS",
+      "APA","APD","APH","APTV","ARE","ATO","AVB","AVGO","AVY","AWK","AXON","AXP","AZO",
+      "BA","BAC","BALL","BAX","BBWI","BBY","BDX","BEN","BG","BIIB","BK","BKNG","BKR",
+      "BLDR","BLK","BMY","BR","BRK-B","BRO","BSX","BWA","BX","BXP",
+      "C","CAG","CAH","CARR","CAT","CB","CBOE","CBRE","CCI","CCL","CDNS","CDW","CE",
+      "CEG","CF","CFG","CHD","CHRW","CHTR","CI","CINF","CL","CLX","CMA","CMCSA","CME",
+      "CMG","CMI","CMS","CNC","CNP","COF","COO","COP","COR","COST","CPB","CPAY","CPT",
+      "CRL","CRM","CRWD","CSCO","CSGP","CSX","CTAS","CTLT","CTSH","CTVA","CVS","CVX","CZR",
+      "D","DAL","DDOG","DE","DECK","DFS","DG","DGX","DHI","DHR","DIS","DLTR","DOC",
+      "DOV","DOW","DPZ","DRI","DTE","DUK","DVA","DVN","DXCM",
+      "EA","EBAY","ECL","ED","EFX","EG","EIX","EL","ELV","EMN","EMR","ENPH","EOG",
+      "EPAM","EQIX","EQR","EQT","ES","ESS","ETN","ETR","ETSY","EVRG","EW","EXC","EXPD","EXPE","EXR",
+      "F","FANG","FAST","FCX","FDS","FDX","FE","FFIV","FI","FICO","FIS","FITB","FMC",
+      "FOX","FOXA","FRT","FSLR","FTNT","FTV",
+      "GD","GDDY","GE","GEHC","GEN","GILD","GIS","GL","GLW","GM","GNRC","GOOG","GOOGL",
+      "GPC","GPN","GRMN","GS","GWW",
+      "HAL","HAS","HBAN","HCA","HD","HES","HIG","HII","HLT","HOLX","HON","HPE","HPQ",
+      "HRL","HSIC","HST","HSY","HUBB","HUM","HWM",
+      "IBM","ICE","IDXX","IEX","IFF","ILMN","INCY","INTC","INTU","INVH","IP","IPG",
+      "IQV","IR","IRM","ISRG","IT","ITW","IVZ",
+      "J","JBHT","JCI","JKHY","JNJ","JNPR","JPM",
+      "K","KDP","KEY","KEYS","KHC","KIM","KKR","KLAC","KMB","KMI","KMX","KO","KR",
+      "L","LDOS","LEN","LH","LHX","LIN","LKQ","LLY","LMT","LNT","LOW","LRCX","LULU",
+      "LUV","LVS","LW","LYB","LYV",
+      "MA","MAA","MAR","MAS","MCD","MCHP","MCK","MCO","MDLZ","MDT","MET","META","MGM",
+      "MHK","MKC","MKTX","MLM","MMC","MMM","MNST","MO","MOH","MOS","MPC","MPWR","MRK",
+      "MRNA","MRO","MS","MSCI","MSFT","MSI","MTB","MTCH","MTD","MU",
+      "NCLH","NDAQ","NEE","NEM","NFLX","NI","NKE","NOC","NOW","NRG","NSC","NTAP",
+      "NTRS","NUE","NVDA","NVR","NXPI",
+      "O","OKE","OMC","ON","ORCL","ORLY","OTIS","OXY",
+      "PANW","PARA","PAYC","PAYX","PCAR","PCG","PEG","PEP","PFE","PFG","PG","PGR",
+      "PH","PHM","PKG","PLD","PM","PNC","PNR","PNW","PODD","POOL","PPG","PPL","PRU",
+      "PSA","PSX","PTC","PWR","PYPL",
+      "QCOM",
+      "RCL","REG","REGN","RF","RJF","RL","RMD","ROK","ROL","ROP","ROST","RSG","RTX","RVTY",
+      "SBAC","SBUX","SCHW","SHW","SJM","SLB","SMCI","SNA","SNPS","SO","SPG","SPGI",
+      "SRE","STE","STLD","STT","STX","STZ","SWK","SWKS","SYF","SYK","SYY",
+      "T","TAP","TDG","TDY","TEL","TER","TFC","TFX","TGT","TJX","TMO","TMUS","TPR",
+      "TRGP","TRMB","TROW","TRV","TSCO","TSLA","TSN","TT","TTWO","TXN","TXT","TYL",
+      "UAL","UDR","UHS","ULTA","UNH","UNP","UPS","URI","USB",
+      "V","VICI","VLO","VMC","VRSK","VRSN","VRTX","VTR","VTRS","VZ",
+      "WAB","WAT","WBA","WBD","WDC","WEC","WELL","WFC","WM","WMB","WMT","WRB","WST","WTW","WY","WYNN",
+      "XEL","XOM","XYL",
+      "YUM",
+      "ZBH","ZBRA","ZTS"
+    ],
+    "Nasdaq 100": [
+      "AAPL","MSFT","NVDA","AMZN","META","TSLA","GOOGL","GOOG","AVGO","COST","NFLX",
+      "AMD","ADBE","QCOM","INTU","CSCO","TXN","AMGN","HON","AMAT","PEP","ISRG","BKNG",
+      "VRTX","LRCX","MU","REGN","PANW","ADI","KLAC","MDLZ","GILD","SBUX","ADP","SNPS",
+      "CDNS","MELI","MAR","ABNB","CRWD","FTNT","ORLY","CSX","MRNA","CTAS","PCAR","MNST",
+      "PAYX","KDP","FAST","DXCM","ODFL","CTSH","MCHP","BIIB","DLTR","VRSK","IDXX","CSGP",
+      "ON","GEHC","SMCI","CDW","DDOG","ANSS","FANG","ILMN","TEAM","EXC","CPRT","CEG",
+      "KHC","TTWO","NXPI","ZS","WBD","SIRI","ROST","PYPL","EBAY","CHTR","AXON"
+    ],
+    "Dow 30": [
+      "AAPL","AMGN","AMZN","AXP","BA","CAT","CRM","CSCO","CVX","DIS","DOW","GS",
+      "HD","HON","IBM","JNJ","JPM","KO","MCD","MMM","MRK","MSFT","NKE","PG",
+      "SHW","TRV","UNH","V","VZ","WMT"
+    ],
+    // ── Curated Sectors ──────────────────────────────────────────────────────
+    "Mega Cap": [
+      "AAPL","MSFT","NVDA","AMZN","GOOGL","GOOG","META","TSLA","BRK-B","LLY",
+      "AVGO","V","JPM","XOM","UNH","MA","JNJ","WMT","COST","HD"
+    ],
+    "Technology": [
+      "CRM","ORCL","AMD","INTC","QCOM","TXN","NOW","SNOW","PLTR","SHOP",
+      "ADBE","MU","AMAT","LRCX","KLAC","MRVL","NXPI","ON","MPWR","MCHP",
+      "ADI","CDNS","SNPS","PANW","CRWD","FTNT","ZS","DDOG","NET","TEAM"
+    ],
+    "Healthcare": [
+      "JNJ","UNH","PFE","ABBV","MRK","TMO","ABT","DHR","BMY","GILD",
+      "AMGN","BSX","SYK","EW","CI","CVS","HUM","MOH","ISRG","ZBH",
+      "BAX","BDX","IQV","A","HOLX","IDXX","MTD","PODD","DXCM","RVTY"
+    ],
+    "Financials": [
+      "JPM","BAC","WFC","GS","MS","BLK","AXP","SCHW","USB","PNC",
+      "COF","TFC","BK","CB","MET","PRU","AFL","ALL","AIG","ICE",
+      "CME","SPGI","MCO","MSCI","CBOE","KKR","BX","APO","FI","FIS"
+    ],
+    "Consumer Disc.": [
+      "AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","TGT","TJX","BKNG",
+      "CMG","MAR","HLT","RCL","NCLH","CCL","ORLY","AZO","DHI","LEN",
+      "PHM","LULU","DECK","EBAY","ETSY","RKT","ABNB","ROST","DLTR","DG"
+    ],
+    "Consumer Staples": [
+      "WMT","COST","PG","KO","PEP","PM","MO","MDLZ","CL","KMB",
+      "GIS","K","CAG","CPB","SYY","HSY","MKC","CHD","CLX","HRL"
+    ],
+    "Energy": [
+      "XOM","CVX","COP","SLB","EOG","MPC","PSX","VLO","OXY","HAL",
+      "BKR","DVN","FANG","HES","MRO","APA","TRGP","OKE","WMB","KMI"
+    ],
+    "Industrials": [
+      "GE","BA","HON","CAT","RTX","UPS","FDX","DE","LMT","NOC",
+      "GD","EMR","ETN","ITW","PH","ROK","TT","CARR","OTIS","CTAS",
+      "FAST","GWW","MSI","HWM","LHX","NSC","CSX","UNP","WAB","JBHT"
+    ],
+    "Biotech": [
+      "MRNA","BNTX","REGN","VRTX","BIIB","ALNY","GILD","AMGN","ILMN","INCY",
+      "SGEN","EXEL","IONS","RARE","NBIX","SRTX","ROIV","LEGN","PCVX","ARVN"
+    ],
+    "Real Estate": [
+      "PLD","AMT","EQIX","CCI","PSA","SPG","O","WELL","AVB","EQR",
+      "DLR","VICI","IRM","ARE","BXP","KIM","REG","VTR","HST","EXR"
+    ],
+    "Utilities": [
+      "NEE","DUK","SO","D","AEP","EXC","XEL","SRE","PCG","ED",
+      "EIX","WEC","ES","ETR","FE","PPL","EVRG","CNP","AES","NI"
+    ],
+    "Small/Mid Cap Growth": [
+      "SMCI","CROX","BOOT","SOFI","CLSK","MARA","RIOT","HIMS","IONQ","RKLB",
+      "AFRM","HOOD","OPEN","PATH","DOCS","GTLB","BILL","TOST","FRSH","S"
+    ],
+    "ETFs": [
+      "SPY","QQQ","IWM","DIA","GLD","SLV","USO","TLT","HYG","XLF",
+      "XLE","XLK","XLV","XLI","XLP","XLU","XLB","XLRE","XLC","XLY"
+    ],
+  };
+
+  const PROXY_BASE = "https://stock-proxy-y3qu.onrender.com";
+  const CONCURRENCY = 5;
+
+  // Runs tasks[] with at most `limit` in-flight at once, calls onProgress(completed) each time one finishes
+  function runConcurrent(items, fn, limit, onProgress) {
+    return new Promise((resolve) => {
+      const results = new Array(items.length);
+      let started = 0, completed = 0;
+      function startNext() {
+        if (started >= items.length) return;
+        const i = started++;
+        fn(items[i], i).then(r => { results[i] = r; }).catch(() => { results[i] = null; }).finally(() => {
+          onProgress(++completed, items.length);
+          if (completed === items.length) resolve(results);
+          else startNext();
+        });
+      }
+      for (let i = 0; i < Math.min(limit, items.length); i++) startNext();
+    });
+  }
+
+  // ── STORAGE ──────────────────────────────────────────────────────────────────
+  const LS = {
+    get: (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  // ── DATA FETCHING ─────────────────────────────────────────────────────────────
+  async function fetchYahoo(ticker, range = "1y", onWaking) {
+    const url = `${PROXY_BASE}/stock?ticker=${ticker}&range=${range}`;
+    let wakingTimer = null;
+    try {
+      if (onWaking) wakingTimer = setTimeout(() => onWaking(true), 2500);
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (wakingTimer) { clearTimeout(wakingTimer); onWaking && onWaking(false); }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      const res = j?.chart?.result?.[0];
+      if (!res) throw new Error("No data");
+      const ts = res.timestamp || res.timestamps;
+      const q = res.indicators?.quote?.[0];
+      if (!ts || !q) throw new Error("No data");
+      const data = ts.map((t, i) => ({
+        date: new Date(t * 1000).toISOString().split("T")[0],
+        open: q.open[i], high: q.high[i], low: q.low[i],
+        close: q.close[i], volume: q.volume[i],
+      })).filter(d => d.close != null);
+      const meta = res.meta || {};
+      return { data, meta };
+    } catch(e) {
+      if (wakingTimer) { clearTimeout(wakingTimer); onWaking && onWaking(false); }
+      throw new Error(`Fetch error for ${ticker}: ${e.message}`);
+    }
+  }
+
+  // ── INDICATORS ────────────────────────────────────────────────────────────────
+  function sma(arr, n) {
+    return arr.map((_, i) => i < n - 1 ? null : arr.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n);
+  }
+
+  function ema(arr, n) {
+    const k = 2 / (n + 1); const out = Array(arr.length).fill(null);
+    let s = arr.slice(0, n).reduce((a, b) => a + b, 0) / n; out[n - 1] = s;
+    for (let i = n; i < arr.length; i++) { s = arr[i] * k + s * (1 - k); out[i] = s; }
+    return out;
+  }
+
+  function calcRSI(closes, n = 14) {
+    const out = Array(closes.length).fill(null);
+    for (let i = n; i < closes.length; i++) {
+      const slice = closes.slice(i - n, i + 1);
+      let g = 0, l = 0;
+      for (let j = 1; j < slice.length; j++) {
+        const d = slice[j] - slice[j - 1];
+        if (d > 0) g += d; else l -= d;
+      }
+      const ag = g / n, al = l / n;
+      out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    }
+    return out;
+  }
+
+  function calcMetrics(data, spyData) {
+    const closes = data.map(d => d.close);
+    const highs = data.map(d => d.high);
+    const lows = data.map(d => d.low);
+    const vols = data.map(d => d.volume);
+    const n = closes.length;
+    const i = n - 1;
+
+    const ma50arr = sma(closes, 50);
+    const ma200arr = sma(closes, 200);
+    const rsiArr = calcRSI(closes);
+    const ema12 = ema(closes, 12);
+    const ema26 = ema(closes, 26);
+    const macdLine = ema12.map((v, j) => v && ema26[j] ? v - ema26[j] : null);
+    const validMacd = macdLine.filter(v => v != null);
+    const signalArr = ema(validMacd, 9);
+    const sigIdx = (k) => { let c = 0; for (let j = 0; j <= k; j++) if (macdLine[j] != null) c++; return c - 1; };
+
+    let cumTV = 0, cumV = 0;
+    const vwapArr = data.map(d => {
+      const tp = (d.high + d.low + d.close) / 3;
+      cumTV += tp * d.volume; cumV += d.volume;
+      return cumV > 0 ? cumTV / cumV : null;
+    });
+
+    const ma20 = sma(closes, 20);
+    const stddev = closes.map((_, j) => {
+      if (j < 19) return null;
+      const sl = closes.slice(j - 19, j + 1);
+      const m = sl.reduce((a, b) => a + b) / 20;
+      return Math.sqrt(sl.reduce((a, b) => a + (b - m) ** 2, 0) / 20);
+    });
+    const bbUpper = ma20.map((m, j) => m && stddev[j] ? m + 2 * stddev[j] : null);
+    const bbLower = ma20.map((m, j) => m && stddev[j] ? m - 2 * stddev[j] : null);
+
+    const price = closes[i];
+    const vol20 = vols.slice(Math.max(0, i - 20), i).reduce((a, b) => a + b, 0) / Math.min(20, i);
+    const wk52High = Math.max(...highs.slice(Math.max(0, i - 251)));
+    const wk52Low = Math.min(...lows.slice(Math.max(0, i - 251)));
+    const low20 = Math.min(...lows.slice(Math.max(0, i - 19), i + 1));
+
+    let macdGreen = false;
+    for (let j = i; j >= 1; j--) {
+      const si = sigIdx(j); const sip = sigIdx(j - 1);
+      if (macdLine[j] != null && si >= 0 && sip >= 0 && si < signalArr.length && sip < signalArr.length) {
+        macdGreen = macdLine[j] > (signalArr[si] ?? 0) && macdLine[j - 1] <= (signalArr[sip] ?? 0);
+        if (macdGreen) break;
+        if (j < i - 5) break;
+      }
+    }
+
+    let rsGreen = false;
+    if (spyData && spyData.length >= 2) {
+      const spyClose = spyData.map(d => d.close);
+      const stockRet = (price - closes[i - 1]) / closes[i - 1];
+      const spyRet = (spyClose[spyClose.length - 1] - spyClose[spyClose.length - 2]) / spyClose[spyClose.length - 2];
+      rsGreen = stockRet > spyRet;
+    }
+
+    const bbRange = bbUpper[i] && bbLower[i] ? bbUpper[i] - bbLower[i] : 1;
+    const bbPos = bbLower[i] ? (price - bbLower[i]) / bbRange : 0.5;
+
+    const metrics = {
+      rsi: rsiArr[i] != null && rsiArr[i] < 35,
+      macd: macdGreen,
+      ma50: ma50arr[i] != null && price > ma50arr[i],
+      ma200: ma200arr[i] != null && price > ma200arr[i],
+      golden: ma50arr[i] != null && ma200arr[i] != null && ma50arr[i] > ma200arr[i],
+      vol: vols[i] > vol20 * 1.2,
+      vwap: vwapArr[i] != null && price < vwapArr[i],
+      bb: bbPos < 0.2,
+      wk52: price <= wk52Low * 1.2,
+      support: price <= low20 * 1.08,
+      rs: rsGreen,
+    };
+
+    const score = Object.values(metrics).filter(Boolean).length;
+    const values = {
+      rsiVal: rsiArr[i]?.toFixed(1),
+      ma50Val: ma50arr[i]?.toFixed(2),
+      ma200Val: ma200arr[i]?.toFixed(2),
+      vwapVal: vwapArr[i]?.toFixed(2),
+      bbUpperVal: bbUpper[i]?.toFixed(2),
+      bbLowerVal: bbLower[i]?.toFixed(2),
+      wk52High: wk52High?.toFixed(2),
+      wk52Low: wk52Low?.toFixed(2),
+      volRatio: vol20 > 0 ? (vols[i] / vol20 * 100).toFixed(0) + "%" : "N/A",
+    };
+
+    return { metrics, score, values, price, prevClose: closes[i - 1] };
+  }
+
+  // ── HELPERS ───────────────────────────────────────────────────────────────────
+  const scoreColor = s => s >= 7 ? "high" : s >= 4 ? "mid" : "low";
+  const dotClass = v => v ? "green" : "red";
+  const pct = (a, b) => b ? ((a - b) / b * 100).toFixed(2) : "0.00";
+  const fmt = n => n != null ? Number(n).toFixed(2) : "—";
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  // ── HTML COMPONENTS ───────────────────────────────────────────────────────────
+  function ScoreBadge(score) {
+    return `<span class="score-badge ${scoreColor(score)}">${score}/11</span>`;
+  }
+
+  function MetricDots(metrics) {
+    return `<div class="dots-row">${METRIC_KEYS.map((k, i) =>
+      `<div title="${esc(METRIC_NAMES[i])}" class="dot ${dotClass(metrics[k])}"></div>`
+    ).join('')}</div>`;
+  }
+
+  function MetricGrid(metrics, values) {
+    const extras = [
+      values?.rsiVal, null, values?.ma50Val, values?.ma200Val,
+      null, values?.volRatio, values?.vwapVal,
+      (values?.bbLowerVal && values?.bbUpperVal) ? `${values.bbLowerVal}–${values.bbUpperVal}` : null,
+      values?.wk52Low, null, null
+    ];
+    return `<div class="metric-grid">${METRIC_KEYS.map((k, i) => `
+      <div class="metric-row">
+        <div class="dot ${dotClass(metrics[k])}"></div>
+        <span class="metric-label">${esc(METRIC_NAMES[i])}</span>
+        ${extras[i] ? `<span class="metric-value">${esc(extras[i])}</span>` : ''}
+      </div>`).join('')}</div>`;
+  }
+
+  function Spinner() {
+    return `<div class="loading"><div class="spin"></div><span>Loading…</span></div>`;
+  }
+
+  // ── STATE ─────────────────────────────────────────────────────────────────────
+  let activeTab = 'Scanner';
+
+  const scannerState = {
+    ticker: '', result: null, loading: false, waking: false, error: ''
+  };
+
+  const backtestState = {
+    ticker: '',
+    startDate: '2023-01-01',
+    endDate: new Date().toISOString().split('T')[0],
+    rows: [], summary: null, loading: false, error: ''
+  };
+
+  const watchlistState = {
+    list: LS.get('watchlist', []),
+    input: '', cardData: {}, refreshing: false
+  };
+
+  const top10State = {
+    active: new Set(['Mega Cap']),
+    results: [], scannedCount: 0, progress: 0, running: false, error: ''
+  };
+
+  const winnersState = {
+    tickerList: '', minPct: '7', days: '10', lookback: '1y',
+    results: [], progress: 0, running: false, error: ''
+  };
+
+  const journalState = {
+    journal: LS.get('journal', []),
+    exitInputs: {}
+  };
+
+  // ── RENDER ────────────────────────────────────────────────────────────────────
+  function render() {
+    document.getElementById('content').innerHTML = renderTab(activeTab);
+    renderNav();
+  }
+
+  function renderNav() {
+    const tabs = [
+      ['Scanner', 'Scanner', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'],
+      ['Backtest', 'Backtest', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'],
+      ['Watchlist', 'Watch', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'],
+      ['Top10', 'Top 10', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>'],
+      ['Winners', 'Winners', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'],
+      ['Patterns', 'Patterns', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h.01M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/></svg>'],
+      ['Journal', 'Journal', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'],
+    ];
+    document.getElementById('nav').innerHTML = tabs.map(([id, label, icon]) =>
+      `<button class="nav-btn ${activeTab === id ? 'active' : ''}" onclick="setTab('${id}')">${icon}${label}</button>`
+    ).join('');
+  }
+
+  function setTab(tab) {
+    activeTab = tab;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function renderTab(tab) {
+    switch(tab) {
+      case 'Scanner':  return renderScanner();
+      case 'Backtest': return renderBacktest();
+      case 'Watchlist': return renderWatchlist();
+      case 'Top10':    return renderTop10();
+      case 'Winners':  return renderWinners();
+      case 'Patterns': return renderPatterns();
+      case 'Journal':  return renderJournal();
+      default: return '';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 1 — SCANNER
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderScanner() {
+    const s = scannerState;
+    const r = s.result;
+    return `
+      <div class="header"><h1>Scanner</h1><span>Technical Analysis</span></div>
+      <div class="input-row">
+        <input class="input" id="scanner-ticker" placeholder="TICKER" value="${esc(s.ticker)}"
+          oninput="scannerState.ticker = this.value.toUpperCase(); this.value = scannerState.ticker"
+          onkeydown="if(event.key==='Enter') scannerScan()" />
+        <button class="btn" onclick="scannerScan()" ${s.loading ? 'disabled' : ''}>Scan</button>
+      </div>
+      ${s.loading && !s.waking ? Spinner() : ''}
+      ${s.waking ? `<div class="loading" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center"><div class="spin"></div><span>Waking up server…</span></div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">Free servers sleep after inactivity. First request takes ~20–30 seconds.</div>
+      </div>` : ''}
+      ${s.error ? `<div class="error">⚠ ${esc(s.error)}</div>` : ''}
+      ${r ? `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            <div>
+              <div style="font-size:28px;font-weight:800;color:var(--accent)">${esc(r.ticker)}</div>
+              <div style="font-family:var(--mono);font-size:22px;font-weight:600">$${fmt(r.price)}</div>
+              <div class="chg ${r.price >= r.prevClose ? 'pos' : 'neg'}">
+                ${r.price >= r.prevClose ? '▲' : '▼'} ${Math.abs(pct(r.price, r.prevClose))}%
+              </div>
+            </div>
+            <div style="text-align:right">
+              ${ScoreBadge(r.score)}
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Signal Score</div>
+            </div>
+          </div>
+          ${MetricDots(r.metrics)}
+          <button class="btn btn-sm" style="margin-top:12px" onclick="scannerMarkPurchased()">Mark as Purchased</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Metric Breakdown</div>
+          ${MetricGrid(r.metrics, r.values)}
+        </div>
+      ` : ''}
+    `;
+  }
+
+  async function scannerScan() {
+    const ticker = scannerState.ticker.trim();
+    if (!ticker) return;
+    scannerState.loading = true; scannerState.waking = false;
+    scannerState.error = ''; scannerState.result = null;
+    render();
+    try {
+      const [{ data }, { data: spyData }] = await Promise.all([
+        fetchYahoo(ticker, '1y', (v) => { scannerState.waking = v; render(); }),
+        fetchYahoo('SPY', '1y'),
+      ]);
+      const r = calcMetrics(data, spyData);
+      scannerState.result = { ...r, ticker, data };
+    } catch(e) { scannerState.error = e.message; }
+    scannerState.loading = false; scannerState.waking = false;
+    render();
+  }
+
+  function scannerMarkPurchased() {
+    const r = scannerState.result;
+    if (!r) return;
+    const j = LS.get('journal', []);
+    j.unshift({
+      id: Date.now(), ticker: r.ticker, entryPrice: r.price,
+      entryDate: new Date().toISOString().split('T')[0],
+      metrics: r.metrics, exitPrice: null, score: r.score,
+    });
+    LS.set('journal', j);
+    journalState.journal = j;
+    alert(`${r.ticker} logged to Journal at $${fmt(r.price)}`);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 2 — BACKTEST
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderBacktest() {
+    const s = backtestState;
+    return `
+      <div class="header"><h1>Backtest</h1><span>Historical Analysis</span></div>
+      <div class="input-row">
+        <input class="input" placeholder="TICKER" value="${esc(s.ticker)}" style="max-width:100px"
+          oninput="backtestState.ticker = this.value.toUpperCase(); this.value = backtestState.ticker" />
+        <input type="date" class="input" value="${s.startDate}"
+          onchange="backtestState.startDate = this.value" />
+        <input type="date" class="input" value="${s.endDate}"
+          onchange="backtestState.endDate = this.value" />
+        <button class="btn" onclick="backtestRun()" ${s.loading ? 'disabled' : ''}>Run</button>
+      </div>
+      ${s.loading ? Spinner() : ''}
+      ${s.error ? `<div class="error">⚠ ${esc(s.error)}</div>` : ''}
+      ${s.summary ? `
+        <div class="card">
+          <div class="card-title">Summary — 10-Day Forward Returns</div>
+          <div class="two-col">
+            <div class="stat-box">
+              <div class="val" style="color:var(--accent)">${s.summary.avgHS10}%</div>
+              <div class="lbl">Avg when 7+ green</div>
+            </div>
+            <div class="stat-box">
+              <div class="val">${s.summary.avgAll10}%</div>
+              <div class="lbl">Avg all days</div>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted);font-family:var(--mono)">
+            ${s.summary.highScoreDays} high-signal days out of ${s.summary.totalDays} total
+          </div>
+        </div>` : ''}
+      ${s.rows.length > 0 ? `
+        <div class="card">
+          <div class="card-title">Day-by-Day Results</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Price</th><th>Score</th><th>Metrics</th><th>+5d</th><th>+10d</th><th>+20d</th></tr></thead>
+              <tbody>${s.rows.slice(0, 200).map(r => `
+                <tr>
+                  <td>${r.date}</td>
+                  <td>$${fmt(r.price)}</td>
+                  <td>${ScoreBadge(r.score)}</td>
+                  <td>${MetricDots(r.metrics)}</td>
+                  <td class="${r.fwd5 > 0 ? 'pnl-pos' : 'pnl-neg'}">${r.fwd5 != null ? r.fwd5 + '%' : '—'}</td>
+                  <td class="${r.fwd10 > 0 ? 'pnl-pos' : 'pnl-neg'}">${r.fwd10 != null ? r.fwd10 + '%' : '—'}</td>
+                  <td class="${r.fwd20 > 0 ? 'pnl-pos' : 'pnl-neg'}">${r.fwd20 != null ? r.fwd20 + '%' : '—'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+    `;
+  }
+
+  async function backtestRun() {
+    const ticker = backtestState.ticker.trim();
+    if (!ticker) return;
+    backtestState.loading = true; backtestState.error = '';
+    backtestState.rows = []; backtestState.summary = null;
+    render();
+    try {
+      const [{ data: allData }, { data: spyData }] = await Promise.all([
+        fetchYahoo(ticker, '2y'),
+        fetchYahoo('SPY', '2y'),
+      ]);
+      const { startDate, endDate } = backtestState;
+      const filtered = allData.filter(d => d.date >= startDate && d.date <= endDate);
+      const startIdx = allData.findIndex(d => d.date >= startDate);
+      const results = [];
+      for (let i = 0; i < filtered.length; i++) {
+        const idx = startIdx + i;
+        if (idx < 200) continue;
+        const slice = allData.slice(0, idx + 1);
+        const spySlice = spyData.slice(0, Math.min(spyData.length, idx + 1));
+        const r = calcMetrics(slice, spySlice);
+        const price = filtered[i].close;
+        const fwd5 = allData[idx + 5]?.close;
+        const fwd10 = allData[idx + 10]?.close;
+        const fwd20 = allData[idx + 20]?.close;
+        results.push({
+          date: filtered[i].date, price, metrics: r.metrics, score: r.score,
+          fwd5: fwd5 ? pct(fwd5, price) : null,
+          fwd10: fwd10 ? pct(fwd10, price) : null,
+          fwd20: fwd20 ? pct(fwd20, price) : null,
+        });
+      }
+      backtestState.rows = results;
+      const highScore = results.filter(r => r.score >= 7);
+      const allFwd10 = results.filter(r => r.fwd10 != null).map(r => parseFloat(r.fwd10));
+      const hsFwd10 = highScore.filter(r => r.fwd10 != null).map(r => parseFloat(r.fwd10));
+      const avg = arr => arr.length ? (arr.reduce((a, b) => a + b) / arr.length).toFixed(2) : 'N/A';
+      backtestState.summary = {
+        totalDays: results.length, highScoreDays: highScore.length,
+        avgAll10: avg(allFwd10), avgHS10: avg(hsFwd10),
+      };
+    } catch(e) { backtestState.error = e.message; }
+    backtestState.loading = false;
+    render();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 3 — WATCHLIST
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderWatchlist() {
+    const s = watchlistState;
+    return `
+      <div class="header">
+        <h1>Watchlist</h1>
+        <button class="btn btn-sm btn-ghost" onclick="watchlistRefresh()" ${s.refreshing ? 'disabled' : ''}>
+          ${s.refreshing ? '…' : '↻ Refresh'}
+        </button>
+      </div>
+      <div class="input-row">
+        <input class="input" id="watchlist-input" placeholder="Add ticker" value="${esc(s.input)}"
+          oninput="watchlistState.input = this.value.toUpperCase(); this.value = watchlistState.input"
+          onkeydown="if(event.key==='Enter') watchlistAdd()" />
+        <button class="btn" onclick="watchlistAdd()">Add</button>
+      </div>
+      ${s.list.length === 0 ? '<div class="info">No tickers in watchlist yet</div>' : ''}
+      ${s.list.map(t => {
+        const d = s.cardData[t];
+        return `
+          <div class="ticker-card">
+            <div class="top">
+              <div>
+                <div class="sym">${esc(t)}</div>
+                ${d ? `
+                  <div class="price">$${fmt(d.price)}</div>
+                  <div class="chg ${d.price >= d.prevClose ? 'pos' : 'neg'}">
+                    ${d.price >= d.prevClose ? '▲' : '▼'} ${Math.abs(pct(d.price, d.prevClose))}%
+                  </div>` : ''}
+              </div>
+              <div style="text-align:right">
+                ${d ? ScoreBadge(d.score) : ''}
+                <div style="display:flex;gap:6px;margin-top:8px">
+                  <button class="btn btn-sm" onclick="goScan('${esc(t)}')">Scan</button>
+                  <button class="btn btn-sm btn-ghost btn-red" onclick="watchlistRemove('${esc(t)}')">✕</button>
+                </div>
+              </div>
+            </div>
+            ${d ? MetricDots(d.metrics) : '<div class="loading"><div class="spin"></div></div>'}
+          </div>`;
+      }).join('')}
+    `;
+  }
+
+  function watchlistAdd() {
+    const t = watchlistState.input.trim().toUpperCase();
+    if (!t || watchlistState.list.includes(t)) return;
+    watchlistState.list = [...watchlistState.list, t];
+    watchlistState.input = '';
+    LS.set('watchlist', watchlistState.list);
+    render();
+    watchlistRefreshSingle(t);
+  }
+
+  function watchlistRemove(t) {
+    watchlistState.list = watchlistState.list.filter(x => x !== t);
+    LS.set('watchlist', watchlistState.list);
+    render();
+  }
+
+  async function watchlistRefresh() {
+    if (!watchlistState.list.length) return;
+    watchlistState.refreshing = true;
+    render();
+    const spyRes = await fetchYahoo('SPY').catch(() => ({ data: [] }));
+    await Promise.all(watchlistState.list.map(async t => {
+      try {
+        const { data } = await fetchYahoo(t);
+        watchlistState.cardData[t] = calcMetrics(data, spyRes.data);
+      } catch { watchlistState.cardData[t] = null; }
+    }));
+    watchlistState.refreshing = false;
+    render();
+  }
+
+  async function watchlistRefreshSingle(t) {
+    try {
+      const spyRes = await fetchYahoo('SPY').catch(() => ({ data: [] }));
+      const { data } = await fetchYahoo(t);
+      watchlistState.cardData[t] = calcMetrics(data, spyRes.data);
+    } catch { watchlistState.cardData[t] = null; }
+    if (activeTab === 'Watchlist') render();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 4 — TOP 10
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderTop10() {
+    const s = top10State;
+    const tickers = [...new Set([...s.active].flatMap(sec => SECTORS[sec] || []))];
+    return `
+      <div class="header"><h1>Top 10</h1><span>Bulk Scanner</span></div>
+      <div class="card">
+        <div class="card-title">Select Sectors (${tickers.length} tickers)</div>
+        <div style="margin-bottom:8px">
+          <button class="btn btn-sm btn-ghost" style="margin-right:6px" onclick="top10SelectAll()">All</button>
+          <button class="btn btn-sm btn-ghost" onclick="top10SelectNone()">None</button>
+        </div>
+        <div>${Object.entries(SECTORS).map(([sec, ts]) =>
+          `<span class="pill ${s.active.has(sec) ? 'active' : ''}" onclick="top10Toggle('${esc(sec)}')">
+            ${esc(sec)} <span class="count">${ts.length}</span>
+          </span>`).join('')}
+        </div>
+      </div>
+      <button class="btn" style="width:100%;margin-bottom:12px"
+        onclick="top10Run()" ${s.running || !tickers.length ? 'disabled' : ''}>
+        ${s.running ? `Scanning… ${s.progress}%` : `Run Scan (${tickers.length} tickers)`}
+      </button>
+      ${s.running ? `<div class="progress-bar"><div class="progress-fill" style="width:${s.progress}%"></div></div>` : ''}
+      ${s.error ? `<div class="error">⚠ ${esc(s.error)}</div>` : ''}
+      ${s.results.length > 0 ? `
+        <div class="card">
+          <div class="card-title">Top Results — ${s.results.length} of ${s.scannedCount} scanned</div>
+          ${s.results.map((r, i) => `
+            <div style="border-bottom:${i < s.results.length - 1 ? '1px solid var(--border)' : 'none'};padding:12px 0">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  ${i === 0 ? '<span class="rank-gold">🥇</span>'
+                    : i === 1 ? '<span class="rank-silver">🥈</span>'
+                    : i === 2 ? '<span class="rank-bronze">🥉</span>'
+                    : `<span style="font-family:var(--mono);color:var(--muted)">#${i+1}</span>`}
+                  <span style="font-size:16px;font-weight:800;color:var(--accent)">${esc(r.ticker)}</span>
+                  <span style="font-family:var(--mono);font-size:13px">$${fmt(r.price)}</span>
+                  <span class="chg ${r.price >= r.prevClose ? 'pos' : 'neg'}">
+                    ${r.price >= r.prevClose ? '▲' : '▼'}${Math.abs(pct(r.price, r.prevClose))}%
+                  </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${ScoreBadge(r.score)}
+                  <button class="btn btn-sm" onclick="goScan('${esc(r.ticker)}')">Scan</button>
+                </div>
+              </div>
+              ${MetricDots(r.metrics)}
+            </div>`).join('')}
+        </div>` : ''}
+    `;
+  }
+
+  function top10Toggle(sec) {
+    if (top10State.active.has(sec)) top10State.active.delete(sec);
+    else top10State.active.add(sec);
+    render();
+  }
+
+  function top10SelectAll() { top10State.active = new Set(Object.keys(SECTORS)); render(); }
+  function top10SelectNone() { top10State.active = new Set(); render(); }
+
+  async function top10Run() {
+    const tickers = [...new Set([...top10State.active].flatMap(s => SECTORS[s] || []))];
+    if (!tickers.length) return;
+    top10State.running = true; top10State.error = '';
+    top10State.results = []; top10State.progress = 0;
+    render();
+    try {
+      const spyRes = await fetchYahoo('SPY').catch(() => ({ data: [] }));
+      const out = [];
+      await runConcurrent(tickers, async (ticker) => {
+        const { data } = await fetchYahoo(ticker);
+        const r = calcMetrics(data, spyRes.data);
+        out.push({ ticker, ...r });
+      }, CONCURRENCY, (done, total) => {
+        top10State.progress = Math.round(done / total * 100);
+        if (activeTab === 'Top10') {
+          const pb = document.querySelector('.progress-fill');
+          if (pb) pb.style.width = top10State.progress + '%';
+          const btn = document.querySelector('#content > button');
+          if (btn) btn.textContent = `Scanning… ${done}/${total}`;
+        }
+      });
+      out.sort((a, b) => b.score - a.score);
+      top10State.scannedCount = out.length;
+      top10State.results = out;
+    } catch(e) { top10State.error = e.message; }
+    top10State.running = false;
+    render();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 5 — WINNERS
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderWinners() {
+    const s = winnersState;
+    return `
+      <div class="header"><h1>Winners</h1><span>Historical Win Finder</span></div>
+      <div class="card">
+        <div class="card-title">Configuration</div>
+        <textarea id="winners-tickers" placeholder="Paste ticker list (one per line or comma separated)&#10;AAPL, MSFT, NVDA..."
+          oninput="winnersState.tickerList = this.value">${esc(s.tickerList)}</textarea>
+        <div class="input-row" style="margin-top:8px">
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Min Move %</div>
+            <input class="input" type="number" value="${esc(s.minPct)}"
+              oninput="winnersState.minPct = this.value" />
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Within Days</div>
+            <input class="input" type="number" value="${esc(s.days)}"
+              oninput="winnersState.days = this.value" />
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Lookback</div>
+            <select class="input" onchange="winnersState.lookback = this.value">
+              <option value="6mo" ${s.lookback==='6mo'?'selected':''}>6 months</option>
+              <option value="1y" ${s.lookback==='1y'?'selected':''}>1 year</option>
+              <option value="2y" ${s.lookback==='2y'?'selected':''}>2 years</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn" style="width:100%" onclick="winnersRun()" ${s.running ? 'disabled' : ''}>
+          ${s.running ? `Scanning… ${s.progress}%` : 'Find Winners'}
+        </button>
+        ${s.running ? `<div class="progress-bar"><div class="progress-fill" id="winners-pb" style="width:${s.progress}%"></div></div>` : ''}
+      </div>
+      ${s.error ? `<div class="error">⚠ ${esc(s.error)}</div>` : ''}
+      ${s.results.length > 0 ? `
+        <div class="card" style="margin-bottom:12px">
+          <div style="font-family:var(--mono);font-size:13px">
+            Found <span style="color:var(--accent)">${s.results.length}</span> winning setups — saved to Pattern Lab
+          </div>
+        </div>
+        ${s.results.slice(0, 50).map((r, i) => `
+          <div class="winner-card">
+            <div class="wc-top">
+              <div>
+                <span style="font-weight:800;color:var(--accent);font-size:16px">${esc(r.ticker)}</span>
+                <span style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-left:8px">${r.entryDate}</span>
+              </div>
+              <span class="tag green">+${r.movePct}%</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:12px;margin-bottom:8px">
+              Entry $${fmt(r.entryPrice)} → Exit $${fmt(r.exitPrice)} &nbsp;${ScoreBadge(r.score)}
+            </div>
+            ${MetricDots(r.metrics)}
+          </div>`).join('')}
+        ${s.results.length > 50 ? `<div class="info">Showing 50 of ${s.results.length} results</div>` : ''}
+      ` : ''}
+    `;
+  }
+
+  async function winnersRun() {
+    const tickers = winnersState.tickerList.split(/[\s,]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
+    if (!tickers.length) return;
+    winnersState.running = true; winnersState.error = '';
+    winnersState.results = []; winnersState.progress = 0;
+    render();
+    const spyRes = await fetchYahoo('SPY', '2y').catch(() => ({ data: [] }));
+    const all = [];
+    const minMove = parseFloat(winnersState.minPct) / 100;
+    const fwdDays = parseInt(winnersState.days);
+
+    await runConcurrent(tickers, async (ticker) => {
+      const { data } = await fetchYahoo(ticker, '2y');
+      for (let i = 200; i < data.length - fwdDays; i++) {
+        const slice = data.slice(0, i + 1);
+        const r = calcMetrics(slice, spyRes.data);
+        const entryPrice = data[i].close;
+        const exitPrice = data[i + fwdDays]?.close;
+        if (!exitPrice) continue;
+        const move = (exitPrice - entryPrice) / entryPrice;
+        if (move >= minMove) {
+          all.push({
+            ticker, entryDate: data[i].date, entryPrice,
+            exitPrice, movePct: (move * 100).toFixed(2),
+            metrics: r.metrics, score: r.score,
+          });
+        }
+      }
+    }, CONCURRENCY, (done, total) => {
+      winnersState.progress = Math.round(done / total * 100);
+      const pb = document.getElementById('winners-pb');
+      if (pb) pb.style.width = winnersState.progress + '%';
+    });
+    all.sort((a, b) => parseFloat(b.movePct) - parseFloat(a.movePct));
+    winnersState.results = all;
+    if (all.length) {
+      LS.set('winners_data', all);
+      alert(`${all.length} winning setups saved to Pattern Lab`);
+    }
+    winnersState.running = false;
+    render();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 6 — PATTERN LAB
+  // ══════════════════════════════════════════════════════════════════════════════
+  const patternsState = {
+    active: new Set(['Mega Cap', 'Technology']),
+    results: [], scannedCount: 0, progress: 0, running: false, error: '',
+    expanded: null
+  };
+
+  // Returns per-metric weights (0–1) derived from winners_data, or equal weights if none
+  function getPatternWeights() {
+    const raw = LS.get('winners_data', []);
+    if (!raw.length) return Object.fromEntries(METRIC_KEYS.map(k => [k, 1]));
+    const freq = Object.fromEntries(METRIC_KEYS.map(k => [k, 0]));
+    raw.forEach(w => METRIC_KEYS.forEach(k => { if (w.metrics[k]) freq[k]++; }));
+    return Object.fromEntries(METRIC_KEYS.map(k => [k, freq[k] / raw.length]));
+  }
+
+  // Weighted match score (0–100%) vs winner patterns
+  function patternMatchPct(metrics, weights) {
+    const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+    if (!totalWeight) return 0;
+    const score = METRIC_KEYS.reduce((acc, k) => acc + (metrics[k] ? weights[k] : 0), 0);
+    return Math.round(score / totalWeight * 100);
+  }
+
+  function renderPatterns() {
+    const s = patternsState;
+    const raw = LS.get('winners_data', []);
+    const hasWinners = raw.length > 0;
+    const weights = getPatternWeights();
+    const tickers = [...new Set([...s.active].flatMap(sec => SECTORS[sec] || []))];
+
+    // ── Winners analysis ─────────────────────────────────────────────────────
+    let winnersSection = '';
+    if (hasWinners) {
+      const freq = Object.fromEntries(METRIC_KEYS.map(k => [k, 0]));
+      raw.forEach(w => METRIC_KEYS.forEach(k => { if (w.metrics[k]) freq[k]++; }));
+      const total = raw.length;
+      const freqPct = Object.fromEntries(METRIC_KEYS.map(k => [k, (freq[k] / total * 100)]));
+
+      // Score buckets: 0-3, 4-6, 7-9, 10-11
+      const buckets = [
+        { label: '10–11 signals', min: 10, max: 11 },
+        { label: '7–9 signals',   min: 7,  max: 9  },
+        { label: '4–6 signals',   min: 4,  max: 6  },
+        { label: '0–3 signals',   min: 0,  max: 3  },
+      ].map(b => {
+        const group = raw.filter(w => w.score >= b.min && w.score <= b.max);
+        const moves = group.map(w => parseFloat(w.movePct));
+        const avgMove = moves.length ? (moves.reduce((a, c) => a + c, 0) / moves.length).toFixed(1) : '—';
+        const maxMove = moves.length ? Math.max(...moves).toFixed(1) : '—';
+        return { ...b, count: group.length, pct: (group.length / total * 100).toFixed(1), avgMove, maxMove };
+      });
+
+      // Top metric pairs
+      const pairs = {};
+      raw.forEach(w => {
+        const gk = METRIC_KEYS.filter(k => w.metrics[k]);
+        for (let a = 0; a < gk.length; a++)
+          for (let b = a + 1; b < gk.length; b++) {
+            const key = `${gk[a]}+${gk[b]}`;
+            pairs[key] = (pairs[key] || 0) + 1;
+          }
+      });
+      const topPairs = Object.entries(pairs).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+      // Top metric by frequency (sorted)
+      const sortedMetrics = [...METRIC_KEYS].sort((a, b) => freqPct[b] - freqPct[a]);
+
+      winnersSection = `
+        <div class="card">
+          <div class="card-title">Win-Rate by Signal Score — ${total} setups</div>
+          <table>
+            <thead><tr><th>Score Range</th><th>Setups</th><th>% of Winners</th><th>Avg Move</th><th>Best Move</th></tr></thead>
+            <tbody>
+              ${buckets.map(b => `
+                <tr>
+                  <td style="color:var(--text);font-weight:600">${b.label}</td>
+                  <td>${b.count}</td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <div style="width:60px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+                        <div style="width:${b.pct}%;height:100%;background:var(--accent);border-radius:3px"></div>
+                      </div>
+                      ${b.pct}%
+                    </div>
+                  </td>
+                  <td class="pnl-pos">+${b.avgMove}%</td>
+                  <td class="pnl-pos">+${b.maxMove}%</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">Metric Predictive Power (% of winners had this green)</div>
+          ${sortedMetrics.map(k => {
+            const i = METRIC_KEYS.indexOf(k);
+            const pct = freqPct[k].toFixed(1);
+            return `
+              <div class="freq-bar">
+                <div class="freq-label">${esc(METRIC_NAMES[i].slice(0, 14))}</div>
+                <div class="freq-track">
+                  <div class="freq-fill" style="width:${pct}%;background:${freqPct[k] >= 60 ? 'var(--green)' : freqPct[k] >= 40 ? 'var(--accent)' : 'var(--accent2)'}">
+                    ${parseFloat(pct) > 20 ? pct + '%' : ''}
+                  </div>
+                </div>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--muted);min-width:34px">${pct}%</span>
+              </div>`;
+          }).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">Top Co-Occurring Metric Pairs</div>
+          ${topPairs.map(([pair, count], i) => {
+            const [a, b] = pair.split('+');
+            const pairPct = (count / total * 100).toFixed(1);
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:${i < topPairs.length-1 ? '1px solid var(--border)' : 'none'}">
+                <span style="font-size:11px;font-family:var(--mono);color:var(--text)">
+                  ${esc((METRIC_NAMES[METRIC_KEYS.indexOf(a)] || a))} + ${esc((METRIC_NAMES[METRIC_KEYS.indexOf(b)] || b))}
+                </span>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${pairPct}% of wins</span>
+                  <span class="tag green">${count}x</span>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    // ── Pattern Scanner ──────────────────────────────────────────────────────
+    const scanSection = `
+      <div class="card">
+        <div class="card-title">Pattern Scanner${hasWinners ? ' — weighted by your winner patterns' : ' — equal weights (run Winners tab to personalise)'}</div>
+        <div style="margin-bottom:8px">
+          <button class="btn btn-sm btn-ghost" style="margin-right:6px" onclick="patternsSelectAll()">All</button>
+          <button class="btn btn-sm btn-ghost" onclick="patternsSelectNone()">None</button>
+        </div>
+        <div style="margin-bottom:12px">
+          ${Object.entries(SECTORS).map(([sec, ts]) =>
+            `<span class="pill ${s.active.has(sec) ? 'active' : ''}" onclick="patternsToggle('${esc(sec)}')">
+              ${esc(sec)} <span class="count">${ts.length}</span>
+            </span>`).join('')}
+        </div>
+        <button class="btn" style="width:100%" onclick="patternsRun()" ${s.running || !tickers.length ? 'disabled' : ''}>
+          ${s.running ? `Scanning… ${s.progress}%` : `Find Pattern Matches (${tickers.length} tickers)`}
+        </button>
+        ${s.running ? `<div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="patterns-pb" style="width:${s.progress}%"></div></div>` : ''}
+      </div>
+      ${s.error ? `<div class="error">⚠ ${esc(s.error)}</div>` : ''}
+      ${s.results.length > 0 ? `
+        <div class="card">
+          <div class="card-title">Pattern Matches — ${s.results.length} of ${s.scannedCount} scanned</div>
+          ${s.results.map((r, i) => {
+            const isOpen = s.expanded === r.ticker;
+            const matchColor = r.matchPct >= 70 ? 'var(--green)' : r.matchPct >= 45 ? 'var(--yellow)' : 'var(--muted)';
+            const perMetricWeights = METRIC_KEYS.map(k => ({
+              key: k,
+              name: METRIC_NAMES[METRIC_KEYS.indexOf(k)],
+              green: r.metrics[k],
+              weight: Math.round(weights[k] * 100),
+              contributed: r.metrics[k] ? Math.round(weights[k] * 100) : 0,
+            }));
+            return `
+            <div style="border-bottom:${i < s.results.length-1 ? '1px solid var(--border)' : 'none'}">
+              <div style="padding:10px 0;cursor:pointer" onclick="patternsExpand('${esc(r.ticker)}')">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    ${i === 0 ? '<span class="rank-gold">🥇</span>'
+                      : i === 1 ? '<span class="rank-silver">🥈</span>'
+                      : i === 2 ? '<span class="rank-bronze">🥉</span>'
+                      : `<span style="font-family:var(--mono);color:var(--muted);font-size:12px">#${i+1}</span>`}
+                    <span style="font-size:15px;font-weight:800;color:var(--accent)">${esc(r.ticker)}</span>
+                    <span style="font-family:var(--mono);font-size:13px">$${fmt(r.price)}</span>
+                    <span class="chg ${r.price >= r.prevClose ? 'pos' : 'neg'}">
+                      ${r.price >= r.prevClose ? '▲' : '▼'}${Math.abs(pct(r.price, r.prevClose))}%
+                    </span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="text-align:right">
+                      <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:${matchColor}">
+                        ${r.matchPct}%
+                      </div>
+                      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">match</div>
+                    </div>
+                    <span style="font-family:var(--mono);font-size:16px;color:var(--muted)">${isOpen ? '▲' : '▼'}</span>
+                  </div>
+                </div>
+                ${MetricDots(r.metrics)}
+              </div>
+              ${isOpen ? `
+              <div style="padding:12px 0 16px;border-top:1px solid var(--border)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                  <div>
+                    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Signal Score</div>
+                    ${ScoreBadge(r.score)}
+                  </div>
+                  <div style="text-align:center">
+                    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Pattern Match</div>
+                    <span style="font-family:var(--mono);font-size:22px;font-weight:600;color:${matchColor}">${r.matchPct}%</span>
+                  </div>
+                  <button class="btn btn-sm" onclick="event.stopPropagation();goScan('${esc(r.ticker)}')">Full Scan →</button>
+                </div>
+                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Per-Metric Breakdown</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+                  ${perMetricWeights.sort((a, b) => b.weight - a.weight).map(m => `
+                    <div style="background:var(--surface2);border-radius:6px;padding:7px 10px;border-left:3px solid ${m.green ? 'var(--green)' : 'var(--border)'}">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                        <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${esc(m.name)}</span>
+                        <span style="font-family:var(--mono);font-size:10px;color:${m.green ? 'var(--green)' : 'var(--muted)'}">${m.green ? '+' + m.weight + '%' : '—'}</span>
+                      </div>
+                      <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+                        <div style="width:${m.weight}%;height:100%;background:${m.green ? 'var(--green)' : 'var(--border)'};border-radius:2px"></div>
+                      </div>
+                    </div>`).join('')}
+                </div>
+                <div style="margin-top:12px">
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">All Indicator Values</div>
+                  ${MetricGrid(r.metrics, r.values)}
+                </div>
+              </div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>` : ''}`;
+
+    return `
+      <div class="header"><h1>Pattern Lab</h1>${hasWinners ? `<span>${raw.length} winner setups</span>` : ''}</div>
+      ${scanSection}
+      ${winnersSection}
+    `;
+  }
+
+  function patternsExpand(ticker) {
+    patternsState.expanded = patternsState.expanded === ticker ? null : ticker;
+    render();
+  }
+
+  function patternsToggle(sec) {
+    if (patternsState.active.has(sec)) patternsState.active.delete(sec);
+    else patternsState.active.add(sec);
+    render();
+  }
+  function patternsSelectAll() { patternsState.active = new Set(Object.keys(SECTORS)); render(); }
+  function patternsSelectNone() { patternsState.active = new Set(); render(); }
+
+  async function patternsRun() {
+    const tickers = [...new Set([...patternsState.active].flatMap(s => SECTORS[s] || []))];
+    if (!tickers.length) return;
+    patternsState.running = true; patternsState.error = '';
+    patternsState.results = []; patternsState.progress = 0;
+    render();
+    const weights = getPatternWeights();
+    try {
+      const spyRes = await fetchYahoo('SPY').catch(() => ({ data: [] }));
+      const out = [];
+      await runConcurrent(tickers, async (ticker) => {
+        const { data } = await fetchYahoo(ticker);
+        const r = calcMetrics(data, spyRes.data);
+        out.push({ ticker, ...r, matchPct: patternMatchPct(r.metrics, weights) });
+      }, CONCURRENCY, (done, total) => {
+        patternsState.progress = Math.round(done / total * 100);
+        const pb = document.getElementById('patterns-pb');
+        if (pb) pb.style.width = patternsState.progress + '%';
+      });
+      out.sort((a, b) => b.matchPct - a.matchPct);
+      patternsState.scannedCount = out.length;
+      patternsState.results = out;
+    } catch(e) { patternsState.error = e.message; }
+    patternsState.running = false;
+    render();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TAB 7 — JOURNAL
+  // ══════════════════════════════════════════════════════════════════════════════
+  function renderJournal() {
+    const s = journalState;
+    return `
+      <div class="header"><h1>Journal</h1><span>${s.journal.length} trades</span></div>
+      ${s.journal.length === 0 ? '<div class="info">No trades logged yet. Use Scanner → Mark as Purchased</div>' : ''}
+      ${s.journal.map(e => {
+        const p = e.exitPrice ? pct(e.exitPrice, e.entryPrice) : null;
+        return `
+          <div class="ticker-card">
+            <div class="top">
+              <div>
+                <div class="sym">${esc(e.ticker)}</div>
+                <div style="font-family:var(--mono);font-size:12px;color:var(--muted)">${e.entryDate}</div>
+                <div style="font-family:var(--mono);font-size:14px;margin-top:4px">Entry: $${fmt(e.entryPrice)}</div>
+                ${e.exitPrice ? `<div style="font-family:var(--mono);font-size:14px">Exit: $${fmt(e.exitPrice)}</div>` : ''}
+              </div>
+              <div style="text-align:right">
+                ${ScoreBadge(e.score)}
+                ${p !== null ? `
+                  <div class="score-badge ${parseFloat(p) >= 0 ? 'high' : 'low'}" style="font-size:16px;display:block;margin-top:4px">
+                    ${parseFloat(p) >= 0 ? '+' : ''}${p}%
+                  </div>` : ''}
+                <button class="btn btn-sm btn-ghost btn-red" style="margin-top:8px"
+                  onclick="journalRemove(${e.id})">Remove</button>
+              </div>
+            </div>
+            ${MetricDots(e.metrics)}
+            ${!e.exitPrice ? `
+              <div class="input-row" style="margin-top:10px">
+                <input class="input" type="number" placeholder="Exit price" id="exit-${e.id}"
+                  value="${esc(s.exitInputs[e.id] || '')}"
+                  oninput="journalState.exitInputs[${e.id}] = this.value" />
+                <button class="btn btn-sm" onclick="journalLogExit(${e.id})">Log Exit</button>
+              </div>` : ''}
+          </div>`;
+      }).join('')}
+    `;
+  }
+
+  function journalLogExit(id) {
+    const price = parseFloat(journalState.exitInputs[id]);
+    if (isNaN(price)) return;
+    journalState.journal = journalState.journal.map(e => e.id === id ? { ...e, exitPrice: price } : e);
+    delete journalState.exitInputs[id];
+    LS.set('journal', journalState.journal);
+    render();
+  }
+
+  function journalRemove(id) {
+    journalState.journal = journalState.journal.filter(e => e.id !== id);
+    LS.set('journal', journalState.journal);
+    render();
+  }
+
+  // ── CROSS-TAB NAVIGATION ──────────────────────────────────────────────────────
+  function goScan(ticker) {
+    scannerState.ticker = ticker;
+    scannerState.result = null;
+    scannerState.error = '';
+    setTab('Scanner');
+  }
+
+  // ── INIT ──────────────────────────────────────────────────────────────────────
+  render();
+  if (watchlistState.list.length) watchlistRefresh();
+  </script>
+</body>
+</html>
