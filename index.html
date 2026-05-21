@@ -150,15 +150,31 @@
 
   <script>
   // ── CONSTANTS ────────────────────────────────────────────────────────────────
-  const METRIC_NAMES = [
-    "RSI < 35", "MACD Cross", "Price > 50MA", "Price > 200MA",
-    "Golden Cross", "Vol > 20avg", "Price < VWAP", "BB Bottom 20%",
-    "Near 52wk Low", "Support Hold", "RS vs SPY"
+  const METRIC_CATEGORIES = [
+    { name: "Momentum",  keys: ["rsi14","rsi7","macd","stoch"]          },
+    { name: "Trend",     keys: ["ma50","ma200","golden","adx"]           },
+    { name: "Volume",    keys: ["vol","vwap","bb","obv"]                 },
+    { name: "Structure", keys: ["wk52","support","hhhl","pwbreak"]       },
+    { name: "Relative",  keys: ["rs","betaadj","dist200","mom1m"]        },
   ];
 
-  const METRIC_KEYS = [
-    "rsi","macd","ma50","ma200","golden","vol","vwap","bb","wk52","support","rs"
-  ];
+  const METRIC_KEYS = METRIC_CATEGORIES.flatMap(c => c.keys);
+  // ["rsi14","rsi7","macd","stoch","ma50","ma200","golden","adx",
+  //  "vol","vwap","bb","obv","wk52","support","hhhl","pwbreak",
+  //  "rs","betaadj","dist200","mom1m"]
+
+  const METRIC_NAMES = {
+    rsi14:   "RSI-14 < 35",     rsi7:    "RSI-7 < 35",
+    macd:    "MACD Cross",      stoch:   "Stoch Oversold",
+    ma50:    "Price > 50MA",    ma200:   "Price > 200MA",
+    golden:  "Golden Cross",    adx:     "ADX Strength",
+    vol:     "Vol > 20avg",     vwap:    "Price < VWAP",
+    bb:      "BB Bottom 20%",   obv:     "OBV Rising",
+    wk52:    "Near 52wk Low",   support: "Support Hold",
+    hhhl:    "Higher H/L",      pwbreak: "Wk High Break",
+    rs:      "RS vs SPY",       betaadj: "Beta-Adj Move",
+    dist200: "Near 200MA",      mom1m:   "1M Momentum",
+  };
 
   const SECTORS = {
     // ── Broad Indices ────────────────────────────────────────────────────────
@@ -367,23 +383,74 @@
     return out;
   }
 
+  // Stochastic %K (smoothed) and %D
+  function calcStoch(highs, lows, closes, period = 14, smooth = 3) {
+    const raw = closes.map((_, i) => {
+      if (i < period - 1) return null;
+      const hh = Math.max(...highs.slice(i - period + 1, i + 1));
+      const ll = Math.min(...lows.slice(i - period + 1, i + 1));
+      return hh === ll ? 50 : (closes[i] - ll) / (hh - ll) * 100;
+    });
+    const kArr = sma(raw.map(v => v ?? 0), smooth);
+    const dArr = sma(kArr.map(v => v ?? 0), smooth);
+    return { kArr, dArr };
+  }
+
+  // ADX, +DI, -DI using SMA smoothing
+  function calcADX(highs, lows, closes, period = 14) {
+    const n = highs.length;
+    const tr = [0], pdm = [0], mdm = [0];
+    for (let i = 1; i < n; i++) {
+      tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));
+      const up = highs[i] - highs[i-1], dn = lows[i-1] - lows[i];
+      pdm.push(up > 0 && up > dn ? up : 0);
+      mdm.push(dn > 0 && dn > up ? dn : 0);
+    }
+    const smTR  = sma(tr,  period);
+    const smPDM = sma(pdm, period);
+    const smMDM = sma(mdm, period);
+    const plusDI  = smTR.map((t, i) => t ? smPDM[i] / t * 100 : null);
+    const minusDI = smTR.map((t, i) => t ? smMDM[i] / t * 100 : null);
+    const dxArr   = plusDI.map((p, i) => {
+      const m = minusDI[i];
+      if (p == null || m == null) return 0;
+      return p + m > 0 ? Math.abs(p - m) / (p + m) * 100 : 0;
+    });
+    const adxArr = sma(dxArr, period);
+    return { adxArr, plusDIArr: plusDI, minusDIArr: minusDI };
+  }
+
+  // On-Balance Volume
+  function calcOBV(closes, volumes) {
+    const obv = [0];
+    for (let i = 1; i < closes.length; i++) {
+      if (closes[i] > closes[i-1])      obv.push(obv[i-1] + volumes[i]);
+      else if (closes[i] < closes[i-1]) obv.push(obv[i-1] - volumes[i]);
+      else                               obv.push(obv[i-1]);
+    }
+    return obv;
+  }
+
   function calcMetrics(data, spyData) {
     const closes = data.map(d => d.close);
-    const highs = data.map(d => d.high);
-    const lows = data.map(d => d.low);
-    const vols = data.map(d => d.volume);
+    const highs  = data.map(d => d.high);
+    const lows   = data.map(d => d.low);
+    const vols   = data.map(d => d.volume);
     const n = closes.length;
     const i = n - 1;
 
-    const ma50arr = sma(closes, 50);
+    // ── Existing indicators ─────────────────────────────────────────────────
+    const ma50arr  = sma(closes, 50);
     const ma200arr = sma(closes, 200);
-    const rsiArr = calcRSI(closes);
+    const rsi14Arr = calcRSI(closes, 14);
+    const rsi7Arr  = calcRSI(closes, 7);
+
     const ema12 = ema(closes, 12);
     const ema26 = ema(closes, 26);
-    const macdLine = ema12.map((v, j) => v && ema26[j] ? v - ema26[j] : null);
-    const validMacd = macdLine.filter(v => v != null);
-    const signalArr = ema(validMacd, 9);
-    const sigIdx = (k) => { let c = 0; for (let j = 0; j <= k; j++) if (macdLine[j] != null) c++; return c - 1; };
+    const macdLine   = ema12.map((v, j) => v && ema26[j] ? v - ema26[j] : null);
+    const validMacd  = macdLine.filter(v => v != null);
+    const signalArr  = ema(validMacd, 9);
+    const sigIdx = k => { let c = 0; for (let j = 0; j <= k; j++) if (macdLine[j] != null) c++; return c - 1; };
 
     let cumTV = 0, cumV = 0;
     const vwapArr = data.map(d => {
@@ -392,104 +459,223 @@
       return cumV > 0 ? cumTV / cumV : null;
     });
 
-    const ma20 = sma(closes, 20);
-    const stddev = closes.map((_, j) => {
+    const ma20    = sma(closes, 20);
+    const stddev  = closes.map((_, j) => {
       if (j < 19) return null;
       const sl = closes.slice(j - 19, j + 1);
-      const m = sl.reduce((a, b) => a + b) / 20;
+      const m  = sl.reduce((a, b) => a + b) / 20;
       return Math.sqrt(sl.reduce((a, b) => a + (b - m) ** 2, 0) / 20);
     });
     const bbUpper = ma20.map((m, j) => m && stddev[j] ? m + 2 * stddev[j] : null);
     const bbLower = ma20.map((m, j) => m && stddev[j] ? m - 2 * stddev[j] : null);
 
-    const price = closes[i];
-    const vol20 = vols.slice(Math.max(0, i - 20), i).reduce((a, b) => a + b, 0) / Math.min(20, i);
-    const wk52High = Math.max(...highs.slice(Math.max(0, i - 251)));
-    const wk52Low = Math.min(...lows.slice(Math.max(0, i - 251)));
-    const low20 = Math.min(...lows.slice(Math.max(0, i - 19), i + 1));
+    // ── New indicators ──────────────────────────────────────────────────────
+    const { kArr: stochK, dArr: stochD } = calcStoch(highs, lows, closes);
+    const { adxArr, plusDIArr, minusDIArr } = calcADX(highs, lows, closes);
+    const obvArr     = calcOBV(closes, vols);
+    const obvSma20   = sma(obvArr, 20);
 
+    // ── Scalar values at current bar ────────────────────────────────────────
+    const price  = closes[i];
+    const vol20  = vols.slice(Math.max(0, i - 20), i).reduce((a, b) => a + b, 0) / Math.min(20, i);
+    const wk52High = Math.max(...highs.slice(Math.max(0, i - 251)));
+    const wk52Low  = Math.min(...lows.slice(Math.max(0, i - 251)));
+    const low20    = Math.min(...lows.slice(Math.max(0, i - 19), i + 1));
+
+    // MACD crossover (within last 5 bars)
     let macdGreen = false;
     for (let j = i; j >= 1; j--) {
-      const si = sigIdx(j); const sip = sigIdx(j - 1);
+      const si = sigIdx(j), sip = sigIdx(j - 1);
       if (macdLine[j] != null && si >= 0 && sip >= 0 && si < signalArr.length && sip < signalArr.length) {
-        macdGreen = macdLine[j] > (signalArr[si] ?? 0) && macdLine[j - 1] <= (signalArr[sip] ?? 0);
-        if (macdGreen) break;
-        if (j < i - 5) break;
+        macdGreen = macdLine[j] > (signalArr[si] ?? 0) && macdLine[j-1] <= (signalArr[sip] ?? 0);
+        if (macdGreen || j < i - 5) break;
       }
     }
 
-    let rsGreen = false;
-    if (spyData && spyData.length >= 2) {
+    // Bollinger position
+    const bbRange = bbUpper[i] && bbLower[i] ? bbUpper[i] - bbLower[i] : 1;
+    const bbPos   = bbLower[i] ? (price - bbLower[i]) / bbRange : 0.5;
+
+    // Higher Highs / Higher Lows (last 10 bars vs prior 10)
+    const recentHigh = i >= 9  ? Math.max(...highs.slice(i - 9, i + 1))  : null;
+    const priorHigh  = i >= 19 ? Math.max(...highs.slice(i - 19, i - 9)) : null;
+    const recentLow  = i >= 9  ? Math.min(...lows.slice(i - 9, i + 1))   : null;
+    const priorLow   = i >= 19 ? Math.min(...lows.slice(i - 19, i - 9))  : null;
+
+    // Prior-week high breakout (close > highest high of bars 5–10 ago)
+    const priorWeekHigh = i >= 10 ? Math.max(...highs.slice(i - 10, i - 5)) : null;
+
+    // SPY-relative metrics
+    let rsGreen = false, betaAdjGreen = false, mom1mGreen = false;
+    if (spyData && spyData.length >= 22) {
       const spyClose = spyData.map(d => d.close);
-      const stockRet = (price - closes[i - 1]) / closes[i - 1];
-      const spyRet = (spyClose[spyClose.length - 1] - spyClose[spyClose.length - 2]) / spyClose[spyClose.length - 2];
-      rsGreen = stockRet > spyRet;
+      const sl = spyClose.length - 1;
+
+      // RS: today's return vs SPY today
+      const stockRet1d = (price - closes[i-1]) / closes[i-1];
+      const spyRet1d   = (spyClose[sl] - spyClose[sl-1]) / spyClose[sl-1];
+      rsGreen = stockRet1d > spyRet1d;
+
+      // Beta over last 60 bars
+      const lookback = Math.min(60, i, sl);
+      const sRets = [], mRets = [];
+      for (let j = 1; j <= lookback; j++) {
+        sRets.push((closes[i-j+1] - closes[i-j]) / closes[i-j]);
+        mRets.push((spyClose[sl-j+1] - spyClose[sl-j]) / spyClose[sl-j]);
+      }
+      const mMean = mRets.reduce((a, b) => a + b, 0) / mRets.length;
+      const mVar  = mRets.reduce((a, b) => a + (b - mMean) ** 2, 0) / mRets.length;
+      const sMean = sRets.reduce((a, b) => a + b, 0) / sRets.length;
+      const cov   = sRets.reduce((a, b, k) => a + (b - sMean) * (mRets[k] - mMean), 0) / sRets.length;
+      const beta  = mVar > 0 ? cov / mVar : 1;
+
+      // Beta-adjusted 5-day move: stock 5d return / beta > SPY 5d return
+      if (i >= 5 && sl >= 5 && Math.abs(beta) > 0.1) {
+        const stock5d = (price - closes[i-5]) / closes[i-5];
+        const spy5d   = (spyClose[sl] - spyClose[sl-5]) / spyClose[sl-5];
+        betaAdjGreen  = (stock5d / beta) > spy5d;
+      }
+
+      // 1-month momentum: stock 21d return > SPY 21d return
+      if (i >= 21 && sl >= 21) {
+        const stock21d = (price - closes[i-21]) / closes[i-21];
+        const spy21d   = (spyClose[sl] - spyClose[sl-21]) / spyClose[sl-21];
+        mom1mGreen     = stock21d > spy21d;
+      }
     }
 
-    const bbRange = bbUpper[i] && bbLower[i] ? bbUpper[i] - bbLower[i] : 1;
-    const bbPos = bbLower[i] ? (price - bbLower[i]) / bbRange : 0.5;
+    // Distance from 200MA: green when price is 0–15% above 200MA (confirmed uptrend, not extended)
+    const dist200Pct = ma200arr[i] ? (price - ma200arr[i]) / ma200arr[i] * 100 : null;
 
+    // ── Build metrics object ────────────────────────────────────────────────
     const metrics = {
-      rsi: rsiArr[i] != null && rsiArr[i] < 35,
-      macd: macdGreen,
-      ma50: ma50arr[i] != null && price > ma50arr[i],
-      ma200: ma200arr[i] != null && price > ma200arr[i],
-      golden: ma50arr[i] != null && ma200arr[i] != null && ma50arr[i] > ma200arr[i],
-      vol: vols[i] > vol20 * 1.2,
-      vwap: vwapArr[i] != null && price < vwapArr[i],
-      bb: bbPos < 0.2,
-      wk52: price <= wk52Low * 1.2,
-      support: price <= low20 * 1.08,
-      rs: rsGreen,
+      // Momentum
+      rsi14:   rsi14Arr[i] != null && rsi14Arr[i] < 35,
+      rsi7:    rsi7Arr[i]  != null && rsi7Arr[i]  < 35,
+      macd:    macdGreen,
+      stoch:   stochK[i]   != null && stochK[i] < 25,
+      // Trend
+      ma50:    ma50arr[i]  != null && price > ma50arr[i],
+      ma200:   ma200arr[i] != null && price > ma200arr[i],
+      golden:  ma50arr[i]  != null && ma200arr[i] != null && ma50arr[i] > ma200arr[i],
+      adx:     adxArr[i]   != null && adxArr[i] > 25 && (plusDIArr[i] ?? 0) > (minusDIArr[i] ?? 0),
+      // Volume & Price Action
+      vol:     vols[i] > vol20 * 1.2,
+      vwap:    vwapArr[i]  != null && price < vwapArr[i],
+      bb:      bbPos < 0.2,
+      obv:     obvSma20[i] != null && obvArr[i] > obvSma20[i],
+      // Structure
+      wk52:    price <= wk52Low * 1.2,
+      support: price <= low20  * 1.08,
+      hhhl:    recentHigh != null && priorHigh != null && recentHigh > priorHigh && recentLow > priorLow,
+      pwbreak: priorWeekHigh != null && price > priorWeekHigh,
+      // Relative & Risk
+      rs:      rsGreen,
+      betaadj: betaAdjGreen,
+      dist200: dist200Pct != null && dist200Pct >= 0 && dist200Pct <= 15,
+      mom1m:   mom1mGreen,
     };
 
-    const score = Object.values(metrics).filter(Boolean).length;
+    const score    = Object.values(metrics).filter(Boolean).length;
+    const catScores = METRIC_CATEGORIES.map(cat => ({
+      name:    cat.name,
+      keys:    cat.keys,
+      green:   cat.keys.filter(k => metrics[k]).length,
+      isGreen: cat.keys.filter(k => metrics[k]).length >= 2,
+    }));
+    const catScore = catScores.filter(c => c.isGreen).length;
+
     const values = {
-      rsiVal: rsiArr[i]?.toFixed(1),
-      ma50Val: ma50arr[i]?.toFixed(2),
-      ma200Val: ma200arr[i]?.toFixed(2),
-      vwapVal: vwapArr[i]?.toFixed(2),
+      rsi14Val:  rsi14Arr[i]?.toFixed(1),
+      rsi7Val:   rsi7Arr[i]?.toFixed(1),
+      stochVal:  stochK[i]?.toFixed(1),
+      adxVal:    adxArr[i]?.toFixed(1),
+      ma50Val:   ma50arr[i]?.toFixed(2),
+      ma200Val:  ma200arr[i]?.toFixed(2),
+      vwapVal:   vwapArr[i]?.toFixed(2),
       bbUpperVal: bbUpper[i]?.toFixed(2),
       bbLowerVal: bbLower[i]?.toFixed(2),
-      wk52High: wk52High?.toFixed(2),
-      wk52Low: wk52Low?.toFixed(2),
-      volRatio: vol20 > 0 ? (vols[i] / vol20 * 100).toFixed(0) + "%" : "N/A",
+      wk52Low:   wk52Low?.toFixed(2),
+      wk52High:  wk52High?.toFixed(2),
+      volRatio:  vol20 > 0 ? (vols[i] / vol20 * 100).toFixed(0) + "%" : "N/A",
+      dist200Val: dist200Pct?.toFixed(1),
     };
 
-    return { metrics, score, values, price, prevClose: closes[i - 1] };
+    return { metrics, score, catScore, catScores, values, price, prevClose: closes[i - 1] };
   }
 
   // ── HELPERS ───────────────────────────────────────────────────────────────────
-  const scoreColor = s => s >= 7 ? "high" : s >= 4 ? "mid" : "low";
-  const dotClass = v => v ? "green" : "red";
-  const pct = (a, b) => b ? ((a - b) / b * 100).toFixed(2) : "0.00";
-  const fmt = n => n != null ? Number(n).toFixed(2) : "—";
-  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const scoreColor = s => s >= 14 ? "high" : s >= 8 ? "mid" : "low";
+  const catColor   = c => c >= 4  ? "high" : c >= 3 ? "mid" : "low";
+  const dotClass   = v => v ? "green" : "red";
+  const pct  = (a, b) => b ? ((a - b) / b * 100).toFixed(2) : "0.00";
+  const fmt  = n => n != null ? Number(n).toFixed(2) : "—";
+  const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   // ── HTML COMPONENTS ───────────────────────────────────────────────────────────
-  function ScoreBadge(score) {
-    return `<span class="score-badge ${scoreColor(score)}">${score}/11</span>`;
+  function ScoreBadge(score, catScore) {
+    const cats = catScore != null
+      ? `<span style="font-family:var(--mono);font-size:13px;color:var(--muted);margin-left:8px">${
+          METRIC_CATEGORIES.map((_, ci) => ci < catScore ? '●' : '○').join('')
+        }</span>`
+      : '';
+    return `<span class="score-badge ${scoreColor(score)}">${score}/20</span>${cats}`;
   }
 
+  // Compact grouped dots — 5 clusters of 4 with a gap between groups
   function MetricDots(metrics) {
-    return `<div class="dots-row">${METRIC_KEYS.map((k, i) =>
-      `<div title="${esc(METRIC_NAMES[i])}" class="dot ${dotClass(metrics[k])}"></div>`
-    ).join('')}</div>`;
+    return `<div class="dots-row" style="gap:2px">${
+      METRIC_CATEGORIES.map((cat, ci) =>
+        `<div style="display:flex;gap:2px;${ci > 0 ? 'margin-left:6px' : ''}">${
+          cat.keys.map(k =>
+            `<div title="${esc(METRIC_NAMES[k])}" class="dot ${dotClass(metrics[k])}"></div>`
+          ).join('')
+        }</div>`
+      ).join('')
+    }</div>`;
   }
 
+  // Full grid grouped by category with headers
   function MetricGrid(metrics, values) {
-    const extras = [
-      values?.rsiVal, null, values?.ma50Val, values?.ma200Val,
-      null, values?.volRatio, values?.vwapVal,
-      (values?.bbLowerVal && values?.bbUpperVal) ? `${values.bbLowerVal}–${values.bbUpperVal}` : null,
-      values?.wk52Low, null, null
-    ];
-    return `<div class="metric-grid">${METRIC_KEYS.map((k, i) => `
-      <div class="metric-row">
-        <div class="dot ${dotClass(metrics[k])}"></div>
-        <span class="metric-label">${esc(METRIC_NAMES[i])}</span>
-        ${extras[i] ? `<span class="metric-value">${esc(extras[i])}</span>` : ''}
-      </div>`).join('')}</div>`;
+    const extraMap = {
+      rsi14:   values?.rsi14Val,
+      rsi7:    values?.rsi7Val,
+      stoch:   values?.stochVal,
+      adx:     values?.adxVal,
+      ma50:    values?.ma50Val,
+      ma200:   values?.ma200Val,
+      vwap:    values?.vwapVal,
+      bb:      (values?.bbLowerVal && values?.bbUpperVal) ? `${values.bbLowerVal}–${values.bbUpperVal}` : null,
+      wk52:    values?.wk52Low,
+      vol:     values?.volRatio,
+      dist200: values?.dist200Val != null ? values.dist200Val + '%' : null,
+    };
+    return METRIC_CATEGORIES.map(cat => `
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                  color:var(--accent2);margin:10px 0 5px">${esc(cat.name)}</div>
+      <div class="metric-grid">
+        ${cat.keys.map(k => `
+          <div class="metric-row">
+            <div class="dot ${dotClass(metrics[k])}"></div>
+            <span class="metric-label">${esc(METRIC_NAMES[k])}</span>
+            ${extraMap[k] ? `<span class="metric-value">${esc(extraMap[k])}</span>` : ''}
+          </div>`).join('')}
+      </div>`).join('');
+  }
+
+  // Category score bar — 5 pills showing which categories are green
+  function CatBar(catScores) {
+    if (!catScores) return '';
+    return `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
+      ${catScores.map(c => `
+        <span style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+          padding:3px 8px;border-radius:4px;
+          background:${c.isGreen ? 'rgba(0,212,170,.15)' : 'var(--surface2)'};
+          color:${c.isGreen ? 'var(--accent)' : 'var(--muted)'};
+          border:1px solid ${c.isGreen ? 'var(--accent)' : 'var(--border)'}">
+          ${esc(c.name)} ${c.green}/4
+        </span>`).join('')}
+    </div>`;
   }
 
   function Spinner() {
@@ -601,11 +787,12 @@
               </div>
             </div>
             <div style="text-align:right">
-              ${ScoreBadge(r.score)}
+              ${ScoreBadge(r.score, r.catScore)}
               <div style="font-size:11px;color:var(--muted);margin-top:4px">Signal Score</div>
             </div>
           </div>
           ${MetricDots(r.metrics)}
+          ${CatBar(r.catScores)}
           <button class="btn btn-sm" style="margin-top:12px" onclick="scannerMarkPurchased()">Mark as Purchased</button>
         </div>
         <div class="card">
@@ -672,7 +859,7 @@
           <div class="two-col">
             <div class="stat-box">
               <div class="val" style="color:var(--accent)">${s.summary.avgHS10}%</div>
-              <div class="lbl">Avg when 7+ green</div>
+              <div class="lbl">Avg when 14+ green</div>
             </div>
             <div class="stat-box">
               <div class="val">${s.summary.avgAll10}%</div>
@@ -693,7 +880,7 @@
                 <tr>
                   <td>${r.date}</td>
                   <td>$${fmt(r.price)}</td>
-                  <td>${ScoreBadge(r.score)}</td>
+                  <td>${ScoreBadge(r.score, r.catScore)}</td>
                   <td>${MetricDots(r.metrics)}</td>
                   <td class="${r.fwd5 > 0 ? 'pnl-pos' : 'pnl-neg'}">${r.fwd5 != null ? r.fwd5 + '%' : '—'}</td>
                   <td class="${r.fwd10 > 0 ? 'pnl-pos' : 'pnl-neg'}">${r.fwd10 != null ? r.fwd10 + '%' : '—'}</td>
@@ -732,14 +919,15 @@
         const fwd10 = allData[idx + 10]?.close;
         const fwd20 = allData[idx + 20]?.close;
         results.push({
-          date: filtered[i].date, price, metrics: r.metrics, score: r.score,
+          date: filtered[i].date, price, metrics: r.metrics,
+          score: r.score, catScore: r.catScore,
           fwd5: fwd5 ? pct(fwd5, price) : null,
           fwd10: fwd10 ? pct(fwd10, price) : null,
           fwd20: fwd20 ? pct(fwd20, price) : null,
         });
       }
       backtestState.rows = results;
-      const highScore = results.filter(r => r.score >= 7);
+      const highScore = results.filter(r => r.score >= 14);
       const allFwd10 = results.filter(r => r.fwd10 != null).map(r => parseFloat(r.fwd10));
       const hsFwd10 = highScore.filter(r => r.fwd10 != null).map(r => parseFloat(r.fwd10));
       const avg = arr => arr.length ? (arr.reduce((a, b) => a + b) / arr.length).toFixed(2) : 'N/A';
@@ -785,7 +973,7 @@
                   </div>` : ''}
               </div>
               <div style="text-align:right">
-                ${d ? ScoreBadge(d.score) : ''}
+                ${d ? ScoreBadge(d.score, d.catScore) : ''}
                 <div style="display:flex;gap:6px;margin-top:8px">
                   <button class="btn btn-sm" onclick="goScan('${esc(t)}')">Scan</button>
                   <button class="btn btn-sm btn-ghost btn-red" onclick="watchlistRemove('${esc(t)}')">✕</button>
@@ -793,6 +981,7 @@
               </div>
             </div>
             ${d ? MetricDots(d.metrics) : '<div class="loading"><div class="spin"></div></div>'}
+            ${d ? CatBar(d.catScores) : ''}
           </div>`;
       }).join('')}
     `;
@@ -882,11 +1071,12 @@
                   </span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
-                  ${ScoreBadge(r.score)}
+                  ${ScoreBadge(r.score, r.catScore)}
                   <button class="btn btn-sm" onclick="goScan('${esc(r.ticker)}')">Scan</button>
                 </div>
               </div>
               ${MetricDots(r.metrics)}
+              ${CatBar(r.catScores)}
             </div>`).join('')}
         </div>` : ''}
     `;
@@ -984,7 +1174,7 @@
               <span class="tag green">+${r.movePct}%</span>
             </div>
             <div style="font-family:var(--mono);font-size:12px;margin-bottom:8px">
-              Entry $${fmt(r.entryPrice)} → Exit $${fmt(r.exitPrice)} &nbsp;${ScoreBadge(r.score)}
+              Entry $${fmt(r.entryPrice)} → Exit $${fmt(r.exitPrice)} &nbsp;${ScoreBadge(r.score, r.catScore)}
             </div>
             ${MetricDots(r.metrics)}
           </div>`).join('')}
@@ -1079,10 +1269,10 @@
 
       // Score buckets: 0-3, 4-6, 7-9, 10-11
       const buckets = [
-        { label: '10–11 signals', min: 10, max: 11 },
-        { label: '7–9 signals',   min: 7,  max: 9  },
-        { label: '4–6 signals',   min: 4,  max: 6  },
-        { label: '0–3 signals',   min: 0,  max: 3  },
+        { label: '17–20 signals', min: 17, max: 20 },
+        { label: '14–16 signals', min: 14, max: 16 },
+        { label: '8–13 signals',  min: 8,  max: 13 },
+        { label: '0–7 signals',   min: 0,  max: 7  },
       ].map(b => {
         const group = raw.filter(w => w.score >= b.min && w.score <= b.max);
         const moves = group.map(w => parseFloat(w.movePct));
@@ -1231,7 +1421,7 @@
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                   <div>
                     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Signal Score</div>
-                    ${ScoreBadge(r.score)}
+                    ${ScoreBadge(r.score, r.catScore)}
                   </div>
                   <div style="text-align:center">
                     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Pattern Match</div>
@@ -1328,7 +1518,7 @@
                 ${e.exitPrice ? `<div style="font-family:var(--mono);font-size:14px">Exit: $${fmt(e.exitPrice)}</div>` : ''}
               </div>
               <div style="text-align:right">
-                ${ScoreBadge(e.score)}
+                ${ScoreBadge(e.score, e.catScore)}
                 ${p !== null ? `
                   <div class="score-badge ${parseFloat(p) >= 0 ? 'high' : 'low'}" style="font-size:16px;display:block;margin-top:4px">
                     ${parseFloat(p) >= 0 ? '+' : ''}${p}%
