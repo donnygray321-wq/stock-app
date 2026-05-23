@@ -1324,11 +1324,10 @@
         <div class="card">
           <div class="card-title">Metric Predictive Power (% of winners had this green)</div>
           ${sortedMetrics.map(k => {
-            const i = METRIC_KEYS.indexOf(k);
             const pct = freqPct[k].toFixed(1);
             return `
               <div class="freq-bar">
-                <div class="freq-label">${esc(METRIC_NAMES[i].slice(0, 14))}</div>
+                <div class="freq-label">${esc((METRIC_NAMES[k] || k).slice(0, 14))}</div>
                 <div class="freq-track">
                   <div class="freq-fill" style="width:${pct}%;background:${freqPct[k] >= 60 ? 'var(--green)' : freqPct[k] >= 40 ? 'var(--accent)' : 'var(--accent2)'}">
                     ${parseFloat(pct) > 20 ? pct + '%' : ''}
@@ -1346,7 +1345,7 @@
             return `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:${i < topPairs.length-1 ? '1px solid var(--border)' : 'none'}">
                 <span style="font-size:11px;font-family:var(--mono);color:var(--text)">
-                  ${esc((METRIC_NAMES[METRIC_KEYS.indexOf(a)] || a))} + ${esc((METRIC_NAMES[METRIC_KEYS.indexOf(b)] || b))}
+                  ${esc(METRIC_NAMES[a] || a)} + ${esc(METRIC_NAMES[b] || b)}
                 </span>
                 <div style="display:flex;gap:6px;align-items:center">
                   <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${pairPct}% of wins</span>
@@ -1385,7 +1384,7 @@
             const matchColor = r.matchPct >= 70 ? 'var(--green)' : r.matchPct >= 45 ? 'var(--yellow)' : 'var(--muted)';
             const perMetricWeights = METRIC_KEYS.map(k => ({
               key: k,
-              name: METRIC_NAMES[METRIC_KEYS.indexOf(k)],
+              name: METRIC_NAMES[k] || k,
               green: r.metrics[k],
               weight: Math.round(weights[k] * 100),
               contributed: r.metrics[k] ? Math.round(weights[k] * 100) : 0,
