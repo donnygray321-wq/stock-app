@@ -126,6 +126,10 @@
     .loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-family: var(--mono); }
     .spin { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes trioGlow {
+      0%, 100% { box-shadow: 0 0 28px rgba(245,158,11,.25), inset 0 0 24px rgba(245,158,11,.06); }
+      50%       { box-shadow: 0 0 42px rgba(245,158,11,.45), inset 0 0 32px rgba(245,158,11,.12); }
+    }
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-box { background: var(--surface2); border-radius: 8px; padding: 12px; text-align: center; }
@@ -679,6 +683,83 @@
     </div>`;
   }
 
+  // ── Golden Trio ──────────────────────────────────────────────────────────────
+  const GOLDEN_TRIO = [
+    { key: 'support', label: 'Support Hold',  pct: '88.2%' },
+    { key: 'vwap',    label: 'Price < VWAP',  pct: '75.7%' },
+    { key: 'wk52',    label: 'Near 52wk Low', pct: '69.4%' },
+  ];
+
+  function GoldenTrio(metrics) {
+    const active  = GOLDEN_TRIO.filter(t => metrics[t.key]);
+    const missing = GOLDEN_TRIO.filter(t => !metrics[t.key]);
+    const n = active.length;
+
+    if (n === 3) return `
+      <div style="
+        background: linear-gradient(135deg, rgba(245,158,11,.18) 0%, rgba(245,158,11,.08) 100%);
+        border: 1.5px solid rgba(245,158,11,.7);
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+        box-shadow: 0 0 28px rgba(245,158,11,.25), inset 0 0 24px rgba(245,158,11,.06);
+        animation: trioGlow 2.4s ease-in-out infinite;
+      ">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:24px;line-height:1">⭐</span>
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#f59e0b;letter-spacing:.03em;text-shadow:0 0 12px rgba(245,158,11,.5)">
+              GOLDEN TRIO ACTIVE
+            </div>
+            <div style="font-size:11px;font-family:var(--mono);color:rgba(245,158,11,.75);margin-top:1px">
+              High-probability setup — all 3 predictive signals aligned
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${GOLDEN_TRIO.map(t => `
+            <div style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.35);
+              border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:10px;color:#f59e0b">
+              ✓ ${esc(t.label)}&nbsp;<span style="opacity:.55">${t.pct}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    if (n === 2) {
+      const m = missing[0];
+      return `
+        <div style="
+          background:var(--surface2);
+          border:1px solid var(--border);
+          border-radius:10px;
+          padding:11px 14px;
+          margin-bottom:12px;
+          display:flex;align-items:center;gap:12px;
+        ">
+          <span style="font-size:18px;opacity:.35">⭐</span>
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">
+              Golden Trio — 2 / 3
+            </div>
+            <div style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px">
+              Missing&nbsp;<span style="color:var(--text)">${esc(m.label)}</span>
+              <span style="opacity:.5">&nbsp;(${m.pct} of winners)</span>
+            </div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            ${GOLDEN_TRIO.map(t => `
+              <div title="${esc(t.label)}" style="
+                width:8px;height:8px;border-radius:50%;
+                background:${metrics[t.key] ? '#f59e0b' : 'var(--border)'};
+                box-shadow:${metrics[t.key] ? '0 0 5px rgba(245,158,11,.5)' : 'none'};
+              "></div>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    return ''; // 0–1 green — stay silent
+  }
+
   function Spinner() {
     return `<div class="loading"><div class="spin"></div><span>Loading…</span></div>`;
   }
@@ -796,6 +877,7 @@
           ${CatBar(r.catScores)}
           <button class="btn btn-sm" style="margin-top:12px" onclick="scannerMarkPurchased()">Mark as Purchased</button>
         </div>
+        ${GoldenTrio(r.metrics)}
         <div class="card">
           <div class="card-title">Metric Breakdown</div>
           ${MetricGrid(r.metrics, r.values)}
