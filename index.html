@@ -59,6 +59,7 @@
 
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
     .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.gold  { background: var(--gold);  box-shadow: 0 0 7px rgba(245,158,11,.8); }
     .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
     .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
     .dot.gray { background: var(--muted); }
@@ -612,7 +613,8 @@
   // ── HELPERS ───────────────────────────────────────────────────────────────────
   const scoreColor = s => s >= 14 ? "high" : s >= 8 ? "mid" : "low";
   const catColor   = c => c >= 4  ? "high" : c >= 3 ? "mid" : "low";
-  const dotClass   = v => v ? "green" : "red";
+  const TRIO_KEYS  = new Set(['support', 'vwap', 'wk52']);
+  const dotClass   = (v, k) => !v ? 'red' : (k && TRIO_KEYS.has(k)) ? 'gold' : 'green';
   const pct  = (a, b) => b ? ((a - b) / b * 100).toFixed(2) : "0.00";
   const fmt  = n => n != null ? Number(n).toFixed(2) : "—";
   const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -633,7 +635,7 @@
       METRIC_CATEGORIES.map((cat, ci) =>
         `<div style="display:flex;gap:2px;${ci > 0 ? 'margin-left:6px' : ''}">${
           cat.keys.map(k =>
-            `<div title="${esc(METRIC_NAMES[k])}" class="dot ${dotClass(metrics[k])}"></div>`
+            `<div title="${esc(METRIC_NAMES[k])}" class="dot ${dotClass(metrics[k], k)}"></div>`
           ).join('')
         }</div>`
       ).join('')
@@ -661,7 +663,7 @@
       <div class="metric-grid">
         ${cat.keys.map(k => `
           <div class="metric-row">
-            <div class="dot ${dotClass(metrics[k])}"></div>
+            <div class="dot ${dotClass(metrics[k], k)}"></div>
             <span class="metric-label">${esc(METRIC_NAMES[k])}</span>
             ${extraMap[k] ? `<span class="metric-value">${esc(extraMap[k])}</span>` : ''}
           </div>`).join('')}
