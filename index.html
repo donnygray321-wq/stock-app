@@ -458,11 +458,15 @@
     const signalArr  = ema(validMacd, 9);
     const sigIdx = k => { let c = 0; for (let j = 0; j <= k; j++) if (macdLine[j] != null) c++; return c - 1; };
 
-    let cumTV = 0, cumV = 0;
-    const vwapArr = data.map(d => {
-      const tp = (d.high + d.low + d.close) / 3;
-      cumTV += tp * d.volume; cumV += d.volume;
-      return cumV > 0 ? cumTV / cumV : null;
+    // Rolling 20-day anchored VWAP — re-weights over a trailing window so it
+    // tracks price instead of flattening into a year-long cumulative average.
+    const VWAP_WINDOW = 20;
+    const typPrice = data.map(d => (d.high + d.low + d.close) / 3);
+    const vwapArr = data.map((_, j) => {
+      const start = Math.max(0, j - VWAP_WINDOW + 1);
+      let tv = 0, v = 0;
+      for (let k = start; k <= j; k++) { tv += typPrice[k] * vols[k]; v += vols[k]; }
+      return v > 0 ? tv / v : null;
     });
 
     const ma20    = sma(closes, 20);
